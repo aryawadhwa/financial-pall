@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parallel Aggregation Analytics</title>
+    <link rel="stylesheet" href="./style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <div class="logo">
+                <span class="gradient-text">PALL-FIN</span>
+                <span class="version">v1.0.0</span>
+            </div>
+            <nav>
+                <div class="status-chip">
+                    <span class="dot pulse"></span>
+                    Live Benchmarking
+                </div>
+            </nav>
+        </header>
+
+        <main>
+            <section class="hero">
+                <h1>Parallel Financial <br/><span class="gradient-text">Data Aggregation</span></h1>
+                <p>High-performance MapReduce-style aggregation system with Apple MPS hardware acceleration.</p>
+            </section>
+
+            <section class="metrics-grid">
+                <div class="glass-card metric-card">
+                    <h3>Sequential Time</h3>
+                    <div class="value" id="seq-time">--</div>
+                    <div class="unit">seconds</div>
+                </div>
+                <div class="glass-card metric-card highlight">
+                    <h3>Parallel Time</h3>
+                    <div class="value" id="par-time">--</div>
+                    <div class="unit">seconds</div>
+                </div>
+                <div class="glass-card metric-card">
+                    <h3>Speedup Factor</h3>
+                    <div class="value accent" id="speedup">--</div>
+                    <div class="unit">X FASTER</div>
+                </div>
+            </section>
+
+            <section class="charts-grid">
+                <div class="glass-card chart-card">
+                    <h3>Performance Comparison</h3>
+                    <canvas id="performanceChart"></canvas>
+                </div>
+                <div class="glass-card chart-card">
+                    <h3>Ticker Volume Breakdown</h3>
+                    <canvas id="tickerChart"></canvas>
+                </div>
+            </section>
+
+            <section class="summary-footer glass-card">
+                <div class="summary-item">
+                    <label>Total Buy Value</label>
+                    <span id="total-buy">--</span>
+                </div>
+                <div class="summary-item">
+                    <label>Total Sell Value</label>
+                    <span id="total-sell">--</span>
+                </div>
+                <div class="summary-item">
+                    <label>Net Flow</label>
+                    <span id="net-flow" class="accent">--</span>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="module" src="./main.js"></script>
+</body>
+</html>
