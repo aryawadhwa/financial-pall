@@ -17,27 +17,38 @@ class StockSummary:
             self.ticker_breakdown[ticker] = self.ticker_breakdown.get(ticker, 0.0) + val
         return self
 
+from collections import defaultdict
+
 class SequentialAggregator:
     def aggregate(self, filename: str) -> StockSummary:
         summary = StockSummary()
+
+        # Local variables for faster inner loop lookup
+        total_buy = 0.0
+        total_sell = 0.0
+        ticker_breakdown = defaultdict(float)
+
         with open(filename, 'r', encoding='utf-8') as f:
             # Skip header
             next(f)
             # Fast manual split for speed
             for line in f:
-                parts = line.strip().split(',')
-                if not parts: continue
+                parts = line.split(',')
+                if len(parts) < 6: continue
                 
                 ticker = parts[1]
                 val = float(parts[5])
                 tx_type = parts[3]
                 
                 if tx_type == 'Buy':
-                    summary.total_buy += val
+                    total_buy += val
                 else:
-                    summary.total_sell += val
+                    total_sell += val
                 
-                summary.ticker_breakdown[ticker] = summary.ticker_breakdown.get(ticker, 0.0) + val
+                ticker_breakdown[ticker] += val
         
+        summary.total_buy = total_buy
+        summary.total_sell = total_sell
+        summary.ticker_breakdown = dict(ticker_breakdown)
         summary.net_flow = summary.total_buy - summary.total_sell
         return summary

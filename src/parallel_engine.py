@@ -5,6 +5,8 @@ import time
 from typing import List, Tuple
 from src.aggregator_core import StockSummary
 
+from collections import defaultdict
+
 def process_chunk(file_path: str, start: int, end: int, worker_id: int) -> StockSummary:
     summary = StockSummary()
     
@@ -28,22 +30,29 @@ def process_chunk(file_path: str, start: int, end: int, worker_id: int) -> Stock
             
     # Process the data in memory
     lines = chunk_data.decode('utf-8').splitlines()
+
+    # Local variables for faster inner loop lookup
+    total_buy = 0.0
+    total_sell = 0.0
+    ticker_breakdown = defaultdict(float)
+
     for line in lines:
         parts = line.split(',')
         if len(parts) < 6: continue
         
-        ticker = parts[1]
-        tx_type = parts[3]
         try:
             val = float(parts[5])
-            if tx_type == 'Buy':
-                summary.total_buy += val
+            if parts[3] == 'Buy':
+                total_buy += val
             else:
-                summary.total_sell += val
-            summary.ticker_breakdown[ticker] = summary.ticker_breakdown.get(ticker, 0.0) + val
-        except:
-            continue
+                total_sell += val
+            ticker_breakdown[parts[1]] += val
+        except ValueError:
+            pass
             
+    summary.total_buy = total_buy
+    summary.total_sell = total_sell
+    summary.ticker_breakdown = dict(ticker_breakdown)
     return summary
 
 class ParallelEngine:
