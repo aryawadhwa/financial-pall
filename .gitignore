@@ -1,1 +1,4 @@
 data/
+test_data.csv
+test_*.py
+__pycache__/

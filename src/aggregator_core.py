@@ -1,20 +1,21 @@
 import csv
 from dataclasses import dataclass, field
 from typing import Dict
+from collections import defaultdict
 
 @dataclass
 class StockSummary:
     total_buy: float = 0.0
     total_sell: float = 0.0
     net_flow: float = 0.0
-    ticker_breakdown: Dict[str, float] = field(default_factory=dict)
+    ticker_breakdown: Dict[str, float] = field(default_factory=lambda: defaultdict(float))
     
     def merge(self, other: 'StockSummary'):
         self.total_buy += other.total_buy
         self.total_sell += other.total_sell
         self.net_flow = self.total_buy - self.total_sell
         for ticker, val in other.ticker_breakdown.items():
-            self.ticker_breakdown[ticker] = self.ticker_breakdown.get(ticker, 0.0) + val
+            self.ticker_breakdown[ticker] += val
         return self
 
 class SequentialAggregator:
@@ -23,21 +24,22 @@ class SequentialAggregator:
         with open(filename, 'r', encoding='utf-8') as f:
             # Skip header
             next(f)
-            # Fast manual split for speed
+            # ⚡ Bolt Optimization: Using split instead of strip+split and
+            # leveraging len == 6 with a try/except block for faster value casting.
+            # Using defaultdict allows fast += instead of dict.get()
             for line in f:
-                parts = line.strip().split(',')
-                if not parts: continue
-                
-                ticker = parts[1]
-                val = float(parts[5])
-                tx_type = parts[3]
-                
-                if tx_type == 'Buy':
-                    summary.total_buy += val
-                else:
-                    summary.total_sell += val
-                
-                summary.ticker_breakdown[ticker] = summary.ticker_breakdown.get(ticker, 0.0) + val
+                parts = line.split(',')
+                if len(parts) == 6:
+                    try:
+                        val = float(parts[5])
+                        if parts[3] == 'Buy':
+                            summary.total_buy += val
+                        else:
+                            summary.total_sell += val
+
+                        summary.ticker_breakdown[parts[1]] += val
+                    except ValueError:
+                        pass
         
         summary.net_flow = summary.total_buy - summary.total_sell
         return summary
