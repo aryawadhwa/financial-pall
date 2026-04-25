@@ -1,3 +1,6 @@
 ## 2026-04-22 - [Python CSV parsing loop unpacking performance]
 **Learning:** Exact tuple unpacking `_, ticker, _, tx_type, _, val_str = line.split(',')` introduces regressions if a CSV structure changes slightly or lines have extra columns. Moreover, combining simple list lookup (`parts = line.split(',')`, `parts[3]`, etc.) is comparable in speed and avoids data-loss regressions.
 **Action:** Be extremely careful to not alter exact validation behavior (like checking `len(parts) < 6`) when migrating from index lookups to strict unpacking to avoid silent drops of edge cases or future formatting adjustments.
+## 2026-04-25 - [Python `splitlines()` vs `split('\n')` performance and behavior]
+**Learning:** While replacing `splitlines()` with `split('\n')` provides a measurable speedup by bypassing Universal Newlines overhead, it changes how trailing newlines are handled. `splitlines()` ignores a single trailing newline, while `split('\n')` leaves an empty string at the end of the list. This difference can lead to downstream data processing errors or calculation regressions if not addressed.
+**Action:** Always append `if lines and not lines[-1]: lines.pop()` when replacing `splitlines()` with `split('\n')` to preserve identical list element lengths and prevent edge-case processing bugs.
