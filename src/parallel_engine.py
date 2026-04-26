@@ -29,7 +29,9 @@ def process_chunk(file_path: str, start: int, end: int, worker_id: int) -> Stock
             chunk_data += extra
             
     # Process the data in memory
-    lines = chunk_data.decode('utf-8').splitlines()
+    lines = chunk_data.decode('utf-8').split('\n')
+    if lines and not lines[-1]:
+        lines.pop()
 
     # Local variables for faster inner loop lookup
     total_buy = 0.0
