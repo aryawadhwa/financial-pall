@@ -13,7 +13,7 @@ CC      = cc
 # -Wall -Wextra  : strict warnings
 # -std=c11       : use C11 standard
 # -D_POSIX_C_SOURCE=200809L : expose strtok_r, clock_gettime etc.
-CFLAGS  = -O2 -Wall -Wextra -std=c11
+CFLAGS  = -O2 -Wall -Wextra -std=c11 -D_POSIX_C_SOURCE=200809L
 
 # Link: pthreads + libm (for fabs)
 LDFLAGS = -lpthread -lm
