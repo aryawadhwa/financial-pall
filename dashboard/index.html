@@ -3,71 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parallel Aggregation Analytics</title>
+    <title>PALL-FIN | Parallel Aggregation Terminal</title>
     <link rel="stylesheet" href="./style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div id="app">
-        <header>
-            <div class="logo">
-                <span class="gradient-text">PALL-FIN</span>
-                <span class="version">v1.0.0</span>
-            </div>
-            <nav>
-                <!-- Benchmarking indicator removed -->
-            </nav>
-        </header>
+        <aside id="worker-sidebar">
+            <!-- Workers will be injected here -->
+        </aside>
 
         <main>
-            <section class="hero">
-                <h1>Parallel Financial <br/><span class="gradient-text">Data Aggregation</span></h1>
-                <p>High-performance MapReduce-style aggregation system with Apple MPS hardware acceleration.</p>
+            <header>
+                <div class="logo-container">
+                    <div class="logo-icon"></div>
+                    <span class="subtitle">System Operational // v1.0.2</span>
+                </div>
+                <h1 class="title-scan">Parallel Data <br/><span class="gradient-text">Aggregation</span></h1>
+            </header>
+
+            <section class="stats-grid">
+                <div class="brick">
+                    <label>Sequential Runtime</label>
+                    <div class="value" id="seq-time">0.000</div>
+                    <span class="subtitle">SEC</span>
+                </div>
+                <div class="brick highlight">
+                    <label>Parallel Runtime</label>
+                    <div class="value" id="par-time">0.000</div>
+                    <span class="subtitle">SEC</span>
+                </div>
+                <div class="brick">
+                    <label>Throughput Gain</label>
+                    <div class="value accent" id="speedup">0.00</div>
+                    <span class="subtitle">FACTOR</span>
+                </div>
+                <div class="brick">
+                    <label>Dataset Volume</label>
+                    <div class="value" id="data-volume">5.0M</div>
+                    <span class="subtitle">RECORDS</span>
+                </div>
             </section>
 
-            <section class="metrics-grid">
-                <div class="glass-card metric-card">
-                    <h3>Sequential Time</h3>
-                    <div class="value" id="seq-time">--</div>
-                    <div class="unit">seconds</div>
+            <section class="algo-viz">
+                <div class="viz-container">
+                    <label class="subtitle">Algorithm Workflow: Divide & Conquer</label>
+                    <div class="partition-flow" id="viz-flow">
+                        <!-- Viz elements injected by JS -->
+                    </div>
                 </div>
-                <div class="glass-card metric-card highlight">
-                    <h3>Parallel Time</h3>
-                    <div class="value" id="par-time">--</div>
-                    <div class="unit">seconds</div>
-                </div>
-                <div class="glass-card metric-card">
-                    <h3>Speedup Factor</h3>
-                    <div class="value accent" id="speedup">--</div>
-                    <div class="unit">X FASTER</div>
-                </div>
-            </section>
-
-            <section class="charts-grid">
-                <div class="glass-card chart-card">
-                    <h3>Performance Comparison</h3>
-                    <canvas id="performanceChart"></canvas>
-                </div>
-                <div class="glass-card chart-card">
-                    <h3>Ticker Volume Breakdown</h3>
+                <div class="chart-container">
+                    <label class="subtitle">Market Distribution</label>
                     <canvas id="tickerChart"></canvas>
                 </div>
             </section>
 
-            <section class="summary-footer glass-card">
-                <div class="summary-item">
-                    <label>Total Buy Value</label>
-                    <span id="total-buy">--</span>
+            <section class="stats-grid">
+                <div class="brick highlight">
+                    <label>Parallel Crossover</label>
+                    <div class="value accent" id="crossover-point">--</div>
+                    <span class="subtitle">RECORDS</span>
                 </div>
-                <div class="summary-item">
-                    <label>Total Sell Value</label>
-                    <span id="total-sell">--</span>
+                <div class="brick">
+                    <label>Amdahl's Parallel Fraction</label>
+                    <div class="value" id="amdahl-fraction">--</div>
+                    <span class="subtitle">PERCENT</span>
                 </div>
-                <div class="summary-item">
-                    <label>Net Flow</label>
-                    <span id="net-flow" class="accent">--</span>
+            </section>
+
+            <section class="stats-grid">
+                <div class="brick">
+                    <label>Total Buy Volume</label>
+                    <div class="value" id="total-buy">--</div>
+                </div>
+                <div class="brick">
+                    <label>Total Sell Volume</label>
+                    <div class="value" id="total-sell">--</div>
+                </div>
+                <div class="brick">
+                    <label>Net Market Flow</label>
+                    <div class="value accent" id="net-flow">--</div>
                 </div>
             </section>
         </main>

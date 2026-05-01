@@ -1,1 +1,5 @@
 data/
+*.o
+financial_agg
+.DS_Store
+dashboard/node_modules/

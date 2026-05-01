@@ -2,22 +2,19 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import os
-import time
+import sys
 
-def fetch_and_augment_stock_data(tickers=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'NFLX'], target_records=5_000_000):
+def fetch_and_augment_stock_data(tickers=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'NFLX'], target_records=5_000_000, filename='data/stocks.csv'):
     """
     Fetches real stock data and augments it to create a massive dataset.
-    Target: 5,000,000 records to demonstrate parallel speedup.
+    Target: dynamically configured records to demonstrate parallel speedup.
     """
-    os.makedirs('data', exist_ok=True)
-    filename = 'data/stocks.csv'
+    os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
     
     print(f"Fetching real stock data for: {tickers}...")
-    data = yf.download(tickers, period="10y", interval="1d", group_by='ticker')
+    data = yf.download(tickers, period="1y", interval="1d", group_by='ticker')
     
-    all_records = []
-    
-    print(f"Generating {target_records:,} records...")
+    print(f"Generating {target_records:,} records into {filename}...")
     
     # Calculate how many records per ticker/day
     num_tickers = len(tickers)
@@ -31,10 +28,16 @@ def fetch_and_augment_stock_data(tickers=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA
         f.write("timestamp,ticker,price,type,volume,total_value\n")
         
         for ticker in tickers:
+            if ticker not in data:
+                continue
             ticker_data = data[ticker].dropna()
             for date, row in ticker_data.iterrows():
                 base_price = row['Open']
-                volatility = (row['High'] - row['Low']) / 10
+                # Sometimes High/Low can be Series or scalar depending on yfinance structure
+                if isinstance(base_price, pd.Series):
+                    base_price = base_price.iloc[0]
+                
+                volatility = base_price * 0.02 # 2% volatility
                 
                 for _ in range(records_per_day):
                     # Fast generation using numpy
@@ -47,10 +50,23 @@ def fetch_and_augment_stock_data(tickers=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA
                     f.write(f"{random_time.isoformat()},{ticker},{price:.2f},{tx_type},{volume},{total_value:.2f}\n")
                     total_generated += 1
                     
+                    if total_generated >= target_records:
+                        break
                     if total_generated % 500_000 == 0:
                         print(f"  Progress: {total_generated:,} / {target_records:,}")
+                if total_generated >= target_records:
+                    break
+            if total_generated >= target_records:
+                break
                 
     print(f"Data generation complete: {total_generated:,} records.")
 
 if __name__ == "__main__":
-    fetch_and_augment_stock_data()
+    records = 5_000_000
+    filename = 'data/stocks.csv'
+    if len(sys.argv) > 1:
+        records = int(sys.argv[1])
+    if len(sys.argv) > 2:
+        filename = sys.argv[2]
+        
+    fetch_and_augment_stock_data(target_records=records, filename=filename)

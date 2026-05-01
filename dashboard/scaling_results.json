@@ -1,0 +1,46 @@
+{
+    "crossover_records": 100000,
+    "average_parallel_fraction": 0.0584925843856388,
+    "scaling_data": [
+        {
+            "records": 100000,
+            "sequential_time": 0.012719,
+            "parallel_time": 0.012033,
+            "speedup": 1.05701,
+            "cpu_count": 8,
+            "parallel_fraction": 0.06164017910359006
+        },
+        {
+            "records": 500000,
+            "sequential_time": 0.058966,
+            "parallel_time": 0.058325,
+            "speedup": 1.01099,
+            "cpu_count": 8,
+            "parallel_fraction": 0.012423466107478909
+        },
+        {
+            "records": 1000000,
+            "sequential_time": 0.118253,
+            "parallel_time": 0.115034,
+            "speedup": 1.027983,
+            "cpu_count": 8,
+            "parallel_fraction": 0.03111001974601863
+        },
+        {
+            "records": 5000000,
+            "sequential_time": 0.616534,
+            "parallel_time": 0.558676,
+            "speedup": 1.103563,
+            "cpu_count": 8,
+            "parallel_fraction": 0.10725052786810936
+        },
+        {
+            "records": 10000000,
+            "sequential_time": 1.213553,
+            "parallel_time": 1.128563,
+            "speedup": 1.075308,
+            "cpu_count": 8,
+            "parallel_fraction": 0.08003872910299707
+        }
+    ]
+}

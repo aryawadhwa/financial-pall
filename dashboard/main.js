@@ -1,67 +1,105 @@
 const API_URL = './results.json';
+const SCALING_URL = './scaling_results.json';
 
 async function init() {
     try {
-        const response = await fetch(API_URL);
+        const [response, scalingResponse] = await Promise.all([
+            fetch(API_URL),
+            fetch(SCALING_URL).catch(() => null)
+        ]);
+        
         const data = await response.json();
+        let scalingData = null;
+        if (scalingResponse && scalingResponse.ok) {
+            scalingData = await scalingResponse.json();
+        }
         
         renderMetrics(data);
-        renderPerformanceChart(data);
         renderTickerChart(data);
-        renderSummary(data);
+        if (scalingData) {
+            renderScalingMetrics(scalingData);
+        }
+        setupSidebar(data.metrics.cpu_count);
+        setupAlgorithmViz(data.metrics.cpu_count);
+        animateEntrance();
     } catch (error) {
         console.error('Error loading benchmark data:', error);
-        // Fallback for demo if file not found yet
-        document.querySelector('main').innerHTML += '<p style="color: red; text-align: center;">Waiting for benchmark results... Check terminal for progress.</p>';
     }
 }
 
+function renderScalingMetrics(scalingData) {
+    const crossover = scalingData.crossover_records;
+    const amdahlFrac = scalingData.average_parallel_fraction * 100;
+
+    const coEl = document.getElementById('crossover-point');
+    const afEl = document.getElementById('amdahl-fraction');
+
+    if (crossover) {
+        coEl.innerText = (crossover / 1e3).toFixed(0) + 'K';
+    } else {
+        coEl.innerText = 'N/A';
+    }
+
+    afEl.innerText = amdahlFrac.toFixed(2) + '%';
+}
+
 function renderMetrics(data) {
-    const { metrics } = data;
+    const { metrics, summary } = data;
     document.getElementById('seq-time').innerText = metrics.sequential_time.toFixed(3);
     document.getElementById('par-time').innerText = metrics.parallel_time.toFixed(3);
     document.getElementById('speedup').innerText = metrics.speedup.toFixed(2);
+    
+    document.getElementById('total-buy').innerText = '$' + (summary.total_buy / 1e9).toFixed(1) + 'B';
+    document.getElementById('total-sell').innerText = '$' + (summary.total_sell / 1e9).toFixed(1) + 'B';
+    document.getElementById('net-flow').innerText = '$' + (summary.net_flow / 1e6).toFixed(1) + 'M';
 }
 
-function renderPerformanceChart(data) {
-    const ctx = document.getElementById('performanceChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: ['Sequential', 'Parallel (8-Core)'],
-            datasets: [{
-                label: 'Execution Time (s)',
-                data: [data.metrics.sequential_time, data.metrics.parallel_time],
-                backgroundColor: [
-                    'rgba(255, 255, 255, 0.1)',
-                    '#00f2ff'
-                ],
-                borderColor: [
-                    'rgba(255, 255, 255, 0.2)',
-                    '#00f2ff'
-                ],
-                borderWidth: 1,
-                borderRadius: 12
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { display: false }
-            },
-            scales: {
-                y: { 
-                    beginAtZero: true,
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#999' }
-                },
-                x: {
-                    grid: { display: false },
-                    ticks: { color: '#fff' }
-                }
-            }
-        }
-    });
+function setupSidebar(count) {
+    const sidebar = document.getElementById('worker-sidebar');
+    for (let i = 0; i < count; i++) {
+        const node = document.createElement('div');
+        node.className = 'worker-node active';
+        sidebar.appendChild(node);
+    }
+}
+
+function setupAlgorithmViz(count) {
+    const flow = document.getElementById('viz-flow');
+    
+    // 1. Source Data
+    const source = document.createElement('div');
+    source.className = 'data-block';
+    source.innerText = 'SOURCE';
+    flow.appendChild(source);
+
+    // 2. Connector to Workers
+    const conn1 = document.createElement('div');
+    conn1.className = 'connector';
+    flow.appendChild(conn1);
+
+    // 3. Parallel Worker Layer
+    const workerStack = document.createElement('div');
+    workerStack.style.display = 'flex';
+    workerStack.style.flexDirection = 'column';
+    workerStack.style.gap = '5px';
+    for (let i = 0; i < 4; i++) { // Show 4 for visual clarity
+        const wb = document.createElement('div');
+        wb.className = 'data-block active';
+        wb.innerText = `W${i}`;
+        workerStack.appendChild(wb);
+    }
+    flow.appendChild(workerStack);
+
+    // 4. Connector to Merge
+    const conn2 = document.createElement('div');
+    conn2.className = 'connector';
+    flow.appendChild(conn2);
+
+    // 5. Final Merge Node
+    const merge = document.createElement('div');
+    merge.className = 'merge-node';
+    merge.innerText = 'MERGE';
+    flow.appendChild(merge);
 }
 
 function renderTickerChart(data) {
@@ -76,29 +114,35 @@ function renderTickerChart(data) {
             datasets: [{
                 data: volumes,
                 backgroundColor: [
-                    '#00f2ff', '#7000ff', '#ff00d4', '#ff8c00', '#00ff8c', '#ffffff'
+                    '#00f2ff', '#7000ff', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'
                 ],
                 borderWidth: 0,
-                hoverOffset: 20
+                hoverOffset: 15
             }]
         },
         options: {
-            cutout: '70%',
+            cutout: '75%',
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: { color: '#999', usePointStyle: true, padding: 20 }
+                    labels: { color: '#666', usePointStyle: true, padding: 15, font: { family: 'JetBrains Mono', size: 10 } }
                 }
             }
         }
     });
 }
 
-function renderSummary(data) {
-    const { summary } = data;
-    document.getElementById('total-buy').innerText = '$' + (summary.total_buy / 1e9).toFixed(2) + 'B';
-    document.getElementById('total-sell').innerText = '$' + (summary.total_sell / 1e9).toFixed(2) + 'B';
-    document.getElementById('net-flow').innerText = '$' + (summary.net_flow / 1e6).toFixed(2) + 'M';
+function animateEntrance() {
+    const bricks = document.querySelectorAll('.brick');
+    bricks.forEach((b, i) => {
+        b.style.opacity = '0';
+        b.style.transform = 'translateY(20px)';
+        setTimeout(() => {
+            b.style.transition = 'all 0.6s cubic-bezier(0.23, 1, 0.32, 1)';
+            b.style.opacity = '1';
+            b.style.transform = 'translateY(0)';
+        }, 100 * i);
+    });
 }
 
 init();
