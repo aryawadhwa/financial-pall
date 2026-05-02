@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 /* ─────────────────────────────────────────────────────────────
  * benchmark.c
  * Main entry point for the Parallel Financial Data Aggregation System.
