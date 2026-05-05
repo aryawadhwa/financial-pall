@@ -113,25 +113,43 @@ static void *process_chunk(void *arg) {
          * CSV: timestamp, ticker, price, type, volume, total_value
          * We need: ticker (idx 1), type (idx 3), total_value (idx 5)
          */
-        char *sp  = NULL;
-        char *tok;
+        char *p = line;
 
-        tok = strtok_r(line, ",", &sp);     if (!tok) continue; /* timestamp    */
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* ticker       */
+        /* timestamp */
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++; /* skip ',' */
 
+        /* ticker */
+        char *ticker_start = p;
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        size_t t_len = p - ticker_start;
+        if (t_len >= TICKER_LEN) t_len = TICKER_LEN - 1;
         char ticker[TICKER_LEN];
-        strncpy(ticker, tok, TICKER_LEN - 1);
-        ticker[TICKER_LEN - 1] = '\0';
+        memcpy(ticker, ticker_start, t_len);
+        ticker[t_len] = '\0';
+        p++; /* skip ',' */
 
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* price        */
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* type         */
+        /* price */
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++; /* skip ',' */
 
-        int is_buy = (tok[0] == 'B');
+        /* type */
+        int is_buy = (*p == 'B');
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++; /* skip ',' */
 
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* volume       */
-        tok = strtok_r(NULL, ",\r\n", &sp); if (!tok) continue; /* total_value  */
+        /* volume */
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++; /* skip ',' */
 
-        double val = atof(tok);
+        /* total_value */
+        /* atof() safely stops at '\r' or '\0' */
+        double val = atof(p);
 
         if (is_buy) a->result.total_buy  += val;
         else        a->result.total_sell += val;
