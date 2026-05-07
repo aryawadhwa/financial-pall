@@ -1,237 +1,270 @@
 /* ─────────────────────────────────────────────────────────────
  * parallel_engine.c
- * Parallel MapReduce pipeline using POSIX threads.
  *
- * Pipeline:
- *   DIVIDE  partition_data()     — O(1): compute byte offsets, no file load
- *   MAP     process_chunk()      — N pthreads, each owns its byte range
- *   REDUCE  tree_reduce()        — O(log N) pairwise merges
+ * Full three-phase parallel MapReduce implementation.
  *
- * The MAP phase reads each chunk into memory in one fread() call,
- * then parses in-place — mirrors Python's f.read(remaining) approach.
+ * PHASE 1 — DIVIDE  : partition_data()
+ *   Complexity: O(1) — one fseek to get file size, arithmetic to
+ *   compute byte ranges. No file content is loaded.
+ *
+ * PHASE 2 — MAP     : worker_map()
+ *   Each of W pthreads independently:
+ *     a. Seeks to its byte range in the file
+ *     b. Skips the first line (header row for W0; partial record
+ *        at the byte boundary for W1..N-1)
+ *     c. Reads its chunk into a heap buffer (one fread call)
+ *     d. Reads one extra line past byte_end to avoid cutting a record
+ *     e. Parses line-by-line with strtok_r — O(N/W) per worker
+ *     f. Accumulates into a local HashTable — O(1) per row
+ *     g. Dumps HashTable → sorted TickerEntry[] — O(K log K), constant
+ *   All W workers run concurrently → wall-clock O(N/W)
+ *
+ * Synchronisation:
+ *   pthread_join() on the main thread is the sole synchronisation
+ *   point. It guarantees all Map phases are complete before Reduce
+ *   begins. pthread_barrier_t is intentionally not used — it is an
+ *   optional POSIX extension that macOS (Darwin) does not implement.
+ *
+ * PHASE 3 — REDUCE  : parallel_tree_reduce()
+ *   Binary tree reduction — O(log W) levels.
+ *   At each level, pairs of partial results are merged with
+ *   sorted_merge() — O(K) linear two-pointer merge. The tree
+ *   collapses W partial summaries into args[0].result.
+ *
+ *   Note: the reduce runs on the main thread after join. Because K
+ *   (tickers) is small (≤ 64), the reduce cost O(K·log W) is
+ *   negligible vs the O(N/W) map cost. The binary tree structure
+ *   still correctly demonstrates O(log W) algorithmic depth.
+ *
+ * Total parallel wall-clock: O(N/W + K·log W) ≈ O(N/W)
+ * Sequential baseline:       O(N)
  * ───────────────────────────────────────────────────────────── */
 
 #define _POSIX_C_SOURCE 200809L
 
 #include "parallel_engine.h"
 #include "aggregator_core.h"
+#include "ht.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
 
-/* ── PHASE 1: DIVIDE ──────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+ * PHASE 1: DIVIDE
+ * ═══════════════════════════════════════════════════════════════ */
 
 /*
- * Splits [0, file_size) into `n` balanced byte ranges.
- * Stored back into args[i].byte_start / byte_end.
- * Identical logic to Python's partition_data():
- *   chunk_size = file_size // n
- *   ranges = [(i*chunk, (i+1)*chunk if i<n-1 else file_size) ...]
+ * partition_data
+ *
+ * Splits [0, file_size) into n balanced byte ranges stored in args[].
+ *
+ * Boundary problem: a range boundary may fall mid-record. This is
+ * handled in worker_map() where every worker unconditionally skips
+ * its first line:
+ *   Worker 0       → skips the CSV header row
+ *   Workers 1..N-1 → skip the partial record at the byte boundary
  */
-static void partition_data(const char *file_path, ChunkArgs *args, int n) {
+static void partition_data(const char *file_path, WorkerArgs *args, int n) {
     FILE *f = fopen(file_path, "rb");
     if (!f) { perror("partition_data: fopen"); return; }
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
     fclose(f);
 
-    long chunk_size = file_size / n;
+    long chunk = file_size / n;
     for (int i = 0; i < n; i++) {
-        args[i].byte_start = i * chunk_size;
-        args[i].byte_end   = (i < n - 1) ? (i + 1) * chunk_size : file_size;
+        args[i].byte_start = i * chunk;
+        args[i].byte_end   = (i < n - 1) ? (i + 1) * chunk : file_size;
     }
 }
 
-/* ── PHASE 2: MAP (pthread worker) ───────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+ * PHASE 2: MAP
+ * ═══════════════════════════════════════════════════════════════ */
 
 /*
- * Each thread:
- *   1. Seeks to byte_start.
- *   2. If not at file start, skips the partial first line
- *      (same edge-case fix as Python: "Handle partial line at start").
- *   3. Reads the entire assigned chunk into a heap buffer with fread().
- *   4. Appends one extra line to handle the chunk boundary.
- *   5. Parses lines in-place with strtok_r().
+ * worker_map — pthread entry point.
+ *
+ * Each thread independently processes its byte range and writes
+ * its partial StockSummary into a->result. The main thread reads
+ * a->result only after pthread_join(), so no mutex is needed.
  */
-static void *process_chunk(void *arg) {
-    ChunkArgs *a = (ChunkArgs *)arg;
+static void *worker_map(void *arg) {
+    WorkerArgs *a = (WorkerArgs *)arg;
     summary_init(&a->result);
 
+    /* ── Open file and seek to partition start ─────────────── */
     FILE *f = fopen(a->file_path, "rb");
-    if (!f) { perror("process_chunk: fopen"); return NULL; }
-
+    if (!f) { perror("worker_map: fopen"); return NULL; }
     fseek(f, a->byte_start, SEEK_SET);
 
-    /* ── Skip the first line for every worker:
-     *   Worker 0           → skip the CSV header row
-     *   Workers 1..N-1     → skip the partial record at the byte boundary
-     * This matches Python: "if start != 0: f.readline()" but also
-     * accounts for the header on the very first worker. */
+    /* ── Skip first line ───────────────────────────────────────
+     * Worker 0       : skip CSV header row
+     * Workers 1..N-1 : skip partial record at the byte boundary */
     {
         char skip[512];
         fgets(skip, sizeof(skip), f);
     }
 
     long actual_start = ftell(f);
-    long nominal_end  = a->byte_end;
-    long read_size    = nominal_end - actual_start;
+    long read_size    = a->byte_end - actual_start;
 
     if (read_size <= 0) { fclose(f); return NULL; }
 
-    /*
-     * Allocate: chunk bytes + 512 bytes headroom for the extra boundary line.
-     * We add +1 for the mandatory '\0' terminator.
-     */
+    /* ── Read chunk into heap buffer (+512 headroom) ─────────── */
     char *buf = (char *)malloc((size_t)read_size + 513);
-    if (!buf) { perror("process_chunk: malloc"); fclose(f); return NULL; }
+    if (!buf) { perror("worker_map: malloc"); fclose(f); return NULL; }
 
     size_t bytes_read = fread(buf, 1, (size_t)read_size, f);
 
-    /* Read one more line beyond the nominal end to avoid cutting a record */
+    /* ── Read one extra line past byte_end to avoid split records */
     char extra[512];
     if (fgets(extra, sizeof(extra), f)) {
-        size_t extra_len = strlen(extra);
-        memcpy(buf + bytes_read, extra, extra_len);
-        bytes_read += extra_len;
+        size_t el = strlen(extra);
+        memcpy(buf + bytes_read, extra, el);
+        bytes_read += el;
     }
-
     buf[bytes_read] = '\0';
     fclose(f);
 
-    /* ── Parse in-memory buffer line by line ─────────────── */
+    /* ── Parse buffer with hash table ─────────────────────────── */
+    HashTable ht;
+    ht_init(&ht);
+
     char *cursor = buf;
     char *newline;
 
     while ((newline = strchr(cursor, '\n')) != NULL) {
-        *newline = '\0'; /* terminate the current line in-place */
+        *newline = '\0';
         char *line = cursor;
-        cursor = newline + 1;
+        cursor     = newline + 1;
 
-        /*
-         * CSV: timestamp, ticker, price, type, volume, total_value
-         * We need: ticker (idx 1), type (idx 3), total_value (idx 5)
-         */
         char *sp  = NULL;
         char *tok;
 
-        tok = strtok_r(line, ",", &sp);     if (!tok) continue; /* timestamp    */
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* ticker       */
+        /* CSV: timestamp(0) ticker(1) price(2) type(3) volume(4) total_value(5) */
+        tok = strtok_r(line, ",", &sp);     if (!tok) continue; /* timestamp   */
+        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* ticker      */
 
         char ticker[TICKER_LEN];
         strncpy(ticker, tok, TICKER_LEN - 1);
         ticker[TICKER_LEN - 1] = '\0';
 
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* price        */
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* type         */
-
+        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* price       */
+        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* type        */
         int is_buy = (tok[0] == 'B');
 
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* volume       */
-        tok = strtok_r(NULL, ",\r\n", &sp); if (!tok) continue; /* total_value  */
+        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* volume      */
+        tok = strtok_r(NULL, ",\r\n", &sp); if (!tok) continue; /* total_value */
 
         double val = atof(tok);
 
+        /* O(1) average hash table update */
+        ht_update(&ht, ticker, val, is_buy);
+
         if (is_buy) a->result.total_buy  += val;
         else        a->result.total_sell += val;
-
-        int idx = find_or_add_ticker(&a->result, ticker);
-        if (idx >= 0)
-            a->result.ticker_breakdown[idx].volume += val;
     }
 
-    a->result.net_flow = a->result.total_buy - a->result.total_sell;
     free(buf);
+    a->result.net_flow = a->result.total_buy - a->result.total_sell;
+
+    /* ── Dump hash table → sorted TickerEntry[] ─────────────── */
+    ht_to_sorted_array(&ht, a->result.ticker_breakdown, &a->result.ticker_count);
+
     return NULL;
 }
 
-/* ── PHASE 3: TREE REDUCE ─────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+ * PHASE 3: REDUCE — Binary Tree
+ * ═══════════════════════════════════════════════════════════════ */
 
 /*
- * Binary Tree Reduction — O(log N) depth.
+ * parallel_tree_reduce
  *
- * Python equivalent:
- *   while len(summaries) > 1:
- *       next_level = []
- *       for i in range(0, len(summaries), 2):
- *           if i+1 < len(summaries):
- *               next_level.append(summaries[i].merge(summaries[i+1]))
- *           else:
- *               next_level.append(summaries[i])
- *       summaries = next_level
- *   return summaries[0]
+ * Collapses W partial StockSummary results into a single global one
+ * using a binary tree tournament:
  *
- * Complexity: O(N) total merges, O(log N) sequential depth.
- * Avoids a single-reducer bottleneck compared to O(N) sequential merge.
+ *   stride=1: scratch[0] ← merge(scratch[0], scratch[1])
+ *             scratch[2] ← merge(scratch[2], scratch[3])  } same level
+ *             ...
+ *   stride=2: scratch[0] ← merge(scratch[0], scratch[2])
+ *             ...
+ *
+ * Each merge uses sorted_merge() — O(K) linear two-pointer merge
+ * (same structure as the merge step in Merge Sort).
+ *
+ * Total levels: ceil(log2(W))
+ * Total merges: W - 1
+ * Total work:   O(K · log W)
  */
-static void tree_reduce(StockSummary *arr, int n, StockSummary *out) {
-    /* Work on a scratch copy so we don't mutate the original results */
+static void parallel_tree_reduce(WorkerArgs *args, int n, StockSummary *out) {
     StockSummary *scratch = (StockSummary *)malloc((size_t)n * sizeof(StockSummary));
-    if (!scratch) { perror("tree_reduce: malloc"); return; }
-    memcpy(scratch, arr, (size_t)n * sizeof(StockSummary));
+    if (!scratch) { perror("parallel_tree_reduce: malloc"); return; }
 
-    while (n > 1) {
-        int next_n = 0;
-        for (int i = 0; i < n; i += 2) {
-            if (i + 1 < n) {
-                summary_merge(&scratch[i], &scratch[i + 1]); /* pairwise merge */
-            }
-            scratch[next_n++] = scratch[i];
-        }
-        n = next_n;
+    for (int i = 0; i < n; i++)
+        scratch[i] = args[i].result;
+
+    int active = n;
+    while (active > 1) {
+        /* Pairwise merge at this tree level */
+        for (int i = 0; i + 1 < active; i += 2)
+            sorted_merge(&scratch[i], &scratch[i + 1]);
+
+        /* Compact winners (even indices) */
+        int next = 0;
+        for (int i = 0; i < active; i += 2)
+            scratch[next++] = scratch[i];
+        active = next;
     }
 
     *out = scratch[0];
     free(scratch);
 }
 
-/* ── Public API ────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+ * PUBLIC API
+ * ═══════════════════════════════════════════════════════════════ */
 
-void parallel_aggregate(const char *file_path, int num_workers, StockSummary *out) {
-    ChunkArgs *args    = (ChunkArgs *)calloc((size_t)num_workers, sizeof(ChunkArgs));
-    pthread_t *threads = (pthread_t *)malloc((size_t)num_workers * sizeof(pthread_t));
+void parallel_aggregate(const char *file_path, int num_workers,
+                        StockSummary *out)
+{
+    if (num_workers < 1) num_workers = 1;
 
+    WorkerArgs *args    = (WorkerArgs *)calloc((size_t)num_workers,
+                                               sizeof(WorkerArgs));
+    pthread_t  *threads = (pthread_t *)malloc((size_t)num_workers *
+                                               sizeof(pthread_t));
     if (!args || !threads) {
         perror("parallel_aggregate: calloc/malloc");
         free(args); free(threads);
         return;
     }
 
-    /* Initialise shared fields in each ChunkArgs */
+    /* ── Initialise worker arguments ──────────────────────── */
     for (int i = 0; i < num_workers; i++) {
-        args[i].file_path = file_path;
-        args[i].worker_id = i;
+        args[i].file_path  = file_path;
+        args[i].worker_id  = i;
     }
 
-    /* DIVIDE: compute byte ranges */
+    /* ── DIVIDE: compute byte ranges — O(1) ───────────────── */
     partition_data(file_path, args, num_workers);
 
-    /* MAP: spawn one pthread per partition */
+    /* ── MAP: spawn one pthread per partition ─────────────── */
     for (int i = 0; i < num_workers; i++) {
-        if (pthread_create(&threads[i], NULL, process_chunk, &args[i]) != 0) {
+        if (pthread_create(&threads[i], NULL, worker_map, &args[i]) != 0)
             perror("pthread_create");
-        }
     }
 
-    /* Wait for all workers to complete */
-    for (int i = 0; i < num_workers; i++) {
+    /* ── Synchronise: wait for all Map phases to finish ────── */
+    for (int i = 0; i < num_workers; i++)
         pthread_join(threads[i], NULL);
-    }
 
-    /* Collect partial results */
-    StockSummary *partials = (StockSummary *)malloc((size_t)num_workers * sizeof(StockSummary));
-    if (!partials) { perror("parallel_aggregate: malloc partials"); goto cleanup; }
+    /* ── REDUCE: binary tree merge — O(K · log W) ─────────── */
+    parallel_tree_reduce(args, num_workers, out);
 
-    for (int i = 0; i < num_workers; i++) {
-        partials[i] = args[i].result;
-    }
-
-    /* REDUCE: binary tree merge */
-    tree_reduce(partials, num_workers, out);
-    free(partials);
-
-cleanup:
     free(args);
     free(threads);
 }

@@ -1,95 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PALL-FIN | Parallel Aggregation Terminal</title>
-    <link rel="stylesheet" href="./style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PALL-FIN | Parallel Financial Aggregation</title>
+  <meta name="description" content="Real-time visualization of a parallel MapReduce financial data aggregation system built in C with POSIX threads." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <div id="app">
-        <aside id="worker-sidebar">
-            <!-- Workers will be injected here -->
-        </aside>
+  <div id="bg-grid"></div>
 
-        <main>
-            <header>
-                <div class="logo-container">
-                    <div class="logo-icon"></div>
-                    <span class="subtitle">System Operational // v1.0.2</span>
-                </div>
-                <h1 class="title-scan">Parallel Data <br/><span class="gradient-text">Aggregation</span></h1>
-            </header>
+  <div id="app">
 
-            <section class="stats-grid">
-                <div class="brick">
-                    <label>Sequential Runtime</label>
-                    <div class="value" id="seq-time">0.000</div>
-                    <span class="subtitle">SEC</span>
-                </div>
-                <div class="brick highlight">
-                    <label>Parallel Runtime</label>
-                    <div class="value" id="par-time">0.000</div>
-                    <span class="subtitle">SEC</span>
-                </div>
-                <div class="brick">
-                    <label>Throughput Gain</label>
-                    <div class="value accent" id="speedup">0.00</div>
-                    <span class="subtitle">FACTOR</span>
-                </div>
-                <div class="brick">
-                    <label>Dataset Volume</label>
-                    <div class="value" id="data-volume">5.0M</div>
-                    <span class="subtitle">RECORDS</span>
-                </div>
-            </section>
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <header id="site-header">
+      <div class="header-inner">
+        <div class="logo">
+          <div class="logo-mark">
+            <span class="logo-line"></span>
+            <span class="logo-line"></span>
+            <span class="logo-line"></span>
+          </div>
+          <div class="logo-text">
+            <span class="logo-name">PALL-FIN</span>
+            <span class="logo-sub">Parallel Aggregation Engine · C / pthreads</span>
+          </div>
+        </div>
+        <div class="header-badge">
+          <span class="dot"></span>
+          <span id="status-text">Loading results…</span>
+        </div>
+      </div>
+    </header>
 
-            <section class="algo-viz">
-                <div class="viz-container">
-                    <label class="subtitle">Algorithm Workflow: Divide & Conquer</label>
-                    <div class="partition-flow" id="viz-flow">
-                        <!-- Viz elements injected by JS -->
-                    </div>
-                </div>
-                <div class="chart-container">
-                    <label class="subtitle">Market Distribution</label>
-                    <canvas id="tickerChart"></canvas>
-                </div>
-            </section>
+    <!-- ── Hero metrics ───────────────────────────────────── -->
+    <section class="section" id="metrics-section">
+      <div class="section-label">Performance Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-icon">⏱</div>
+          <div class="metric-body">
+            <div class="metric-value" id="m-seq">—</div>
+            <div class="metric-label">Sequential Time</div>
+            <div class="metric-sub">Single-threaded O(N)</div>
+          </div>
+        </div>
+        <div class="metric-card highlight">
+          <div class="metric-icon">⚡</div>
+          <div class="metric-body">
+            <div class="metric-value accent" id="m-par">—</div>
+            <div class="metric-label">Parallel Time</div>
+            <div class="metric-sub" id="m-workers-sub">— workers · tree-reduce</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">🚀</div>
+          <div class="metric-body">
+            <div class="metric-value green" id="m-speedup">—</div>
+            <div class="metric-label">Speedup Factor</div>
+            <div class="metric-sub">T_seq / T_par</div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon">✓</div>
+          <div class="metric-body">
+            <div class="metric-value" id="m-accuracy">—</div>
+            <div class="metric-label">Accuracy Check</div>
+            <div class="metric-sub">|Δ per-ticker buy| &lt; 0.01</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-            <section class="stats-grid">
-                <div class="brick highlight">
-                    <label>Parallel Crossover</label>
-                    <div class="value accent" id="crossover-point">--</div>
-                    <span class="subtitle">RECORDS</span>
-                </div>
-                <div class="brick">
-                    <label>Amdahl's Parallel Fraction</label>
-                    <div class="value" id="amdahl-fraction">--</div>
-                    <span class="subtitle">PERCENT</span>
-                </div>
-            </section>
+    <!-- ── Algorithm Visualizer ───────────────────────────── -->
+    <section class="section" id="algo-section">
+      <div class="section-label">Algorithm Visualizer — Divide &amp; Conquer</div>
+      <div class="algo-viz" id="algo-viz">
+        <!-- Injected by JS -->
+      </div>
+      <div class="algo-complexity">
+        <div class="complexity-row">
+          <span class="phase-tag divide">DIVIDE</span>
+          <code>Byte-range partition → O(1)</code>
+        </div>
+        <div class="complexity-row">
+          <span class="phase-tag map">MAP</span>
+          <code>Hash table O(1)/row → O(N/W) per worker</code>
+        </div>
+        <div class="complexity-row">
+          <span class="phase-tag reduce">REDUCE</span>
+          <code>Sort-merge binary tree → O(K · log W)</code>
+        </div>
+        <div class="complexity-row total">
+          <span class="phase-tag total">TOTAL</span>
+          <code>O(N/W)  vs  sequential O(N)</code>
+        </div>
+      </div>
+    </section>
 
-            <section class="stats-grid">
-                <div class="brick">
-                    <label>Total Buy Volume</label>
-                    <div class="value" id="total-buy">--</div>
-                </div>
-                <div class="brick">
-                    <label>Total Sell Volume</label>
-                    <div class="value" id="total-sell">--</div>
-                </div>
-                <div class="brick">
-                    <label>Net Market Flow</label>
-                    <div class="value accent" id="net-flow">--</div>
-                </div>
-            </section>
-        </main>
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script type="module" src="./main.js"></script>
+    <!-- ── Charts ─────────────────────────────────────────── -->
+    <section class="section" id="charts-section">
+      <div class="charts-grid">
+        <!-- Speedup curve -->
+        <div class="chart-card wide">
+          <div class="chart-header">
+            <div class="chart-title">Speedup vs Thread Count</div>
+            <div class="chart-sub">Measured · Amdahl's Law ceiling</div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="speedup-chart"></canvas>
+          </div>
+          <div class="amdahl-stats">
+            <div class="astat">
+              <span class="astat-label">Parallel Fraction (p)</span>
+              <span class="astat-value" id="amdahl-p">—</span>
+            </div>
+            <div class="astat">
+              <span class="astat-label">Crossover Workers</span>
+              <span class="astat-value" id="crossover">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Market distribution donut -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Market Distribution</div>
+            <div class="chart-sub">Total value per ticker</div>
+          </div>
+          <div class="chart-wrap donut-wrap">
+            <canvas id="market-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Buy vs Sell bar chart -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Buy vs Sell Volume</div>
+            <div class="chart-sub">Per ticker ($B)</div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="buysell-chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Global summary ─────────────────────────────────── -->
+    <section class="section" id="summary-section">
+      <div class="section-label">Global Aggregation Result</div>
+      <div class="summary-grid">
+        <div class="summary-card buy">
+          <div class="summary-label">Total Buy Volume</div>
+          <div class="summary-value" id="s-buy">—</div>
+        </div>
+        <div class="summary-card sell">
+          <div class="summary-label">Total Sell Volume</div>
+          <div class="summary-value" id="s-sell">—</div>
+        </div>
+        <div class="summary-card net">
+          <div class="summary-label">Net Market Flow</div>
+          <div class="summary-value" id="s-net">—</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Ticker table ───────────────────────────────────── -->
+    <section class="section" id="table-section">
+      <div class="section-label">Per-Ticker Breakdown</div>
+      <div class="table-wrap">
+        <table id="ticker-table">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Buy ($B)</th>
+              <th>Sell ($B)</th>
+              <th>Net Flow ($B)</th>
+              <th>Direction</th>
+            </tr>
+          </thead>
+          <tbody id="ticker-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      <p>PALL-FIN · DAA Project · Divide &amp; Conquer MapReduce in C · <span id="footer-workers"></span></p>
+    </footer>
+
+  </div><!-- #app -->
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>

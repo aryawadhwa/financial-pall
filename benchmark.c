@@ -1,150 +1,176 @@
 /* ─────────────────────────────────────────────────────────────
- * benchmark.c
- * Main entry point for the Parallel Financial Data Aggregation System.
+ * benchmark.c  —  Main entry point
  *
  * Workflow:
- *   1. Run sequential_aggregate()  → record wall-clock time
- *   2. Run parallel_aggregate()    → record wall-clock time
- *   3. Verify accuracy (|seq.total_buy - par.total_buy| < 0.01)
- *   4. Compute speedup = seq_time / par_time
- *   5. Write dashboard/results.json  (same schema as Python version)
+ *   1. Run sequential_aggregate()  → record T_sequential
+ *   2. Run parallel_aggregate()    → record T_parallel
+ *   3. Per-ticker correctness check (|seq_buy - par_buy| < 0.01)
+ *   4. Compute speedup = T_sequential / T_parallel
+ *   5. Print formatted terminal table
+ *   6. Write dashboard/results.json
  *
  * Usage:
- *   ./financial_agg                     (defaults to data/stocks.csv)
- *   ./financial_agg path/to/file.csv
+ *   ./financial_agg                      — auto-detect cores, data/stocks.csv
+ *   ./financial_agg 4                    — 4 workers, data/stocks.csv
+ *   ./financial_agg 4 path/to/file.csv   — 4 workers, custom file
  * ───────────────────────────────────────────────────────────── */
+
+#define _POSIX_C_SOURCE 200809L
 
 #include "src/aggregator_core.h"
 #include "src/parallel_engine.h"
+#include "src/platform.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <time.h>
-#include <unistd.h>
-#include <sys/stat.h>
 
-/* Portable CPU count: sysconf works on macOS (Darwin ext) and Linux */
-static int get_cpu_count(void) {
-    long n = sysconf(_SC_NPROCESSORS_ONLN);
-    return (n > 0) ? (int)n : 1;
-}
+/* ── Timing — delegates to platform.h ───────────────────────── */
+static double now_s(void) { return platform_time_s(); }
 
-/* ── Timing ────────────────────────────────────────────────── */
-
-static double get_time_s(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
-}
-
-/* ── JSON Output ────────────────────────────────────────────── */
-
-/*
- * Writes a results.json compatible with the existing dashboard.
- * Schema is identical to the Python json.dump() output so the
- * Chart.js frontend requires zero changes.
+/* ── JSON Export ─────────────────────────────────────────────
+ * Schema matches what dashboard/main.js expects.
+ * ticker_breakdown entries include buy, sell, net_flow.
  */
-static void write_results_json(
-    const char         *path,
-    double              seq_time,
-    double              par_time,
-    double              speedup,
-    int                 accuracy,
-    int                 cpu_count,
-    const StockSummary *par)
+static void write_results_json(const char         *path,
+                               double              seq_time,
+                               double              par_time,
+                               double              speedup,
+                               int                 num_workers,
+                               int                 accuracy,
+                               const StockSummary *par)
 {
+    /* Ensure dashboard/ directory exists */
+    mkdir("dashboard", 0755);
+
     FILE *f = fopen(path, "w");
     if (!f) { perror("write_results_json: fopen"); return; }
 
     fprintf(f, "{\n");
-    fprintf(f, "    \"metrics\": {\n");
-    fprintf(f, "        \"sequential_time\": %.6f,\n",  seq_time);
-    fprintf(f, "        \"parallel_time\": %.6f,\n",    par_time);
-    fprintf(f, "        \"speedup\": %.6f,\n",          speedup);
-    fprintf(f, "        \"accuracy_check\": %s,\n",     accuracy ? "true" : "false");
-    fprintf(f, "        \"cpu_count\": %d\n",           cpu_count);
-    fprintf(f, "    },\n");
-    fprintf(f, "    \"summary\": {\n");
-    fprintf(f, "        \"total_buy\": %.6f,\n",  par->total_buy);
-    fprintf(f, "        \"total_sell\": %.6f,\n", par->total_sell);
-    fprintf(f, "        \"net_flow\": %.6f,\n",   par->net_flow);
-    fprintf(f, "        \"ticker_breakdown\": {\n");
+    fprintf(f, "  \"metrics\": {\n");
+    fprintf(f, "    \"sequential_time\": %.6f,\n", seq_time);
+    fprintf(f, "    \"parallel_time\": %.6f,\n",   par_time);
+    fprintf(f, "    \"speedup\": %.6f,\n",          speedup);
+    fprintf(f, "    \"num_workers\": %d,\n",        num_workers);
+    fprintf(f, "    \"accuracy_check\": %s\n",      accuracy ? "true" : "false");
+    fprintf(f, "  },\n");
+    fprintf(f, "  \"summary\": {\n");
+    fprintf(f, "    \"total_buy\": %.2f,\n",  par->total_buy);
+    fprintf(f, "    \"total_sell\": %.2f,\n", par->total_sell);
+    fprintf(f, "    \"net_flow\": %.2f,\n",   par->net_flow);
+    fprintf(f, "    \"ticker_breakdown\": [\n");
 
     for (int i = 0; i < par->ticker_count; i++) {
+        const TickerEntry *t = &par->ticker_breakdown[i];
         int last = (i == par->ticker_count - 1);
-        fprintf(f, "            \"%s\": %.6f%s\n",
-                par->ticker_breakdown[i].ticker,
-                par->ticker_breakdown[i].volume,
+        fprintf(f, "      { \"ticker\": \"%s\","
+                   " \"buy\": %.2f,"
+                   " \"sell\": %.2f,"
+                   " \"net_flow\": %.2f }%s\n",
+                t->ticker, t->buy, t->sell, t->net_flow,
                 last ? "" : ",");
     }
 
-    fprintf(f, "        }\n");
-    fprintf(f, "    }\n");
+    fprintf(f, "    ]\n");
+    fprintf(f, "  }\n");
     fprintf(f, "}\n");
     fclose(f);
 }
 
-/* ── Entry Point ────────────────────────────────────────────── */
+/* ── Entry Point ─────────────────────────────────────────────── */
 
 int main(int argc, char *argv[]) {
-    const char *file_path  = (argc > 1) ? argv[1] : "data/stocks.csv";
-    int         num_workers = get_cpu_count();
+    /* Parse CLI: [num_workers] [file_path] */
+    int         num_workers = platform_cpu_count();
+    const char *file_path   = "data/stocks.csv";
+
+    if (argc >= 2) num_workers = atoi(argv[1]);
+    if (argc >= 3) file_path   = argv[2];
+    if (num_workers < 1) num_workers = 1;
 
     /* ── Header ─────────────────────────────────────────────── */
     printf("\n");
     printf("╔══════════════════════════════════════════════════════╗\n");
-    printf("║   Parallel Financial Data Aggregation — C Engine    ║\n");
-    printf("╚══════════════════════════════════════════════════════╝\n");
-    printf("  File    : %s\n", file_path);
-    printf("  Workers : %d pthreads\n", num_workers);
-    printf("  Reduce  : Binary Tree  O(log N) depth\n\n");
+    printf("║     Parallel Financial Data Aggregation — C         ║\n");
+    printf("╠══════════════════════════════════════════════════════╣\n");
+    printf("║  File    : %-42s║\n", file_path);
+    printf("║  Workers : %-2d pthreads                               ║\n", num_workers);
+    printf("║  Map     : Hash Table O(1) per row                  ║\n");
+    printf("║  Reduce  : Binary Tree Sort-Merge  O(K · log W)     ║\n");
+    printf("╚══════════════════════════════════════════════════════╝\n\n");
 
     /* ── 1. Sequential baseline ─────────────────────────────── */
     printf("[1/2] Sequential Aggregator...\n");
-    StockSummary seq_result;
-    double t0       = get_time_s();
-    sequential_aggregate(file_path, &seq_result);
-    double seq_time = get_time_s() - t0;
+    StockSummary seq;
+    double t0       = now_s();
+    sequential_aggregate(file_path, &seq);
+    double seq_time = now_s() - t0;
     printf("      Done  →  %.4f s\n\n", seq_time);
 
-    /* ── 2. Parallel engine ──────────────────────────────────── */
-    printf("[2/2] Parallel Aggregator  (%d pthreads, tree-reduce)...\n", num_workers);
-    StockSummary par_result;
-    double t1       = get_time_s();
-    parallel_aggregate(file_path, num_workers, &par_result);
-    double par_time = get_time_s() - t1;
+    /* ── 2. Parallel engine ─────────────────────────────────── */
+    printf("[2/2] Parallel Aggregator  (%d workers, tree-reduce)...\n",
+           num_workers);
+    StockSummary par;
+    double t1       = now_s();
+    parallel_aggregate(file_path, num_workers, &par);
+    double par_time = now_s() - t1;
     printf("      Done  →  %.4f s\n\n", par_time);
 
-    /* ── 3. Metrics ─────────────────────────────────────────── */
-    double speedup = (par_time > 0.0) ? (seq_time / par_time) : 0.0;
-    int    accuracy = fabs(seq_result.total_buy - par_result.total_buy) < 0.01;
+    /* ── 3. Correctness check ───────────────────────────────── */
+    /* Per-ticker buy accuracy */
+    int accuracy = 1;
+    for (int i = 0; i < seq.ticker_count && accuracy; i++) {
+        /* Find matching ticker in par result */
+        for (int j = 0; j < par.ticker_count; j++) {
+            if (strncmp(seq.ticker_breakdown[i].ticker,
+                        par.ticker_breakdown[j].ticker, TICKER_LEN) == 0) {
+                if (fabs(seq.ticker_breakdown[i].buy -
+                         par.ticker_breakdown[j].buy) > 0.01) {
+                    accuracy = 0;
+                }
+                break;
+            }
+        }
+    }
+    /* Global buy total as final sanity check */
+    if (fabs(seq.total_buy - par.total_buy) > 0.01) accuracy = 0;
 
-    printf("┌──────────────────────────────────────┐\n");
-    printf("│  Sequential Time  : %8.4f s       │\n", seq_time);
-    printf("│  Parallel Time    : %8.4f s       │\n", par_time);
-    printf("│  Speedup Factor   : %8.2fx       │\n", speedup);
-    printf("│  Accuracy Check   :  %s          │\n", accuracy ? "PASS ✓" : "FAIL ✗");
-    printf("│  CPU Cores Used   : %8d        │\n", num_workers);
-    printf("└──────────────────────────────────────┘\n\n");
+    /* ── 4. Metrics table ───────────────────────────────────── */
+    double speedup = (par_time > 1e-9) ? (seq_time / par_time) : 0.0;
 
-    /* ── 4. Ticker breakdown ─────────────────────────────────── */
+    printf("┌──────────────────────────────────────────────┐\n");
+    printf("│  Sequential Time  : %10.4f s             │\n", seq_time);
+    printf("│  Parallel Time    : %10.4f s             │\n", par_time);
+    printf("│  Speedup Factor   : %10.2fx             │\n", speedup);
+    printf("│  Accuracy Check   :  %-24s│\n",
+           accuracy ? "PASS ✓  (|Δ| < 0.01)" : "FAIL ✗");
+    printf("│  Workers Used     : %10d               │\n", num_workers);
+    printf("└──────────────────────────────────────────────┘\n\n");
+
+    /* ── 5. Ticker breakdown ────────────────────────────────── */
     printf("  Ticker Breakdown (parallel result):\n");
-    for (int i = 0; i < par_result.ticker_count; i++) {
-        printf("    %-6s  $%.2fB\n",
-               par_result.ticker_breakdown[i].ticker,
-               par_result.ticker_breakdown[i].volume / 1e9);
+    printf("  %-8s  %14s  %14s  %14s\n",
+           "Ticker", "Buy ($B)", "Sell ($B)", "Net Flow ($B)");
+    printf("  %-8s  %14s  %14s  %14s\n",
+           "──────", "────────", "─────────", "─────────────");
+    for (int i = 0; i < par.ticker_count; i++) {
+        const TickerEntry *t = &par.ticker_breakdown[i];
+        printf("  %-8s  %14.4f  %14.4f  %14.4f\n",
+               t->ticker,
+               t->buy      / 1e9,
+               t->sell     / 1e9,
+               t->net_flow / 1e9);
     }
     printf("\n");
 
-    /* ── 5. Write JSON for dashboard ────────────────────────── */
-    /* Ensure dashboard/ directory exists */
-    mkdir("dashboard", 0755);
+    /* ── 6. Write JSON for dashboard ────────────────────────── */
+    platform_mkdir("dashboard");
     write_results_json("dashboard/results.json",
-                       seq_time, par_time, speedup, accuracy,
-                       num_workers, &par_result);
-    printf("  Results  →  dashboard/results.json\n\n");
+                       seq_time, par_time, speedup,
+                       num_workers, accuracy, &par);
+    printf("  Results written -> dashboard/results.json\n");
+    printf("  Run: python3 -m http.server 8080 --directory dashboard\n\n");
 
     return accuracy ? 0 : 1;
 }

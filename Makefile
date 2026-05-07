@@ -1,51 +1,75 @@
 # ─────────────────────────────────────────────────────────────
 # Makefile — Parallel Financial Data Aggregation System (C)
+# Cross-platform: macOS / Linux / Windows (MinGW-w64)
 #
 # Targets:
-#   make           → compile ./financial_agg
-#   make run       → compile + run benchmark on data/stocks.csv
+#   make           → compile the binary
+#   make run       → compile + run with auto-detected cores
+#   make run W=4   → compile + run with 4 worker threads
+#   make gen       → (re)generate 5M row synthetic dataset
+#   make bench     → run W=1,2,4,8,16, write scaling JSON
+#   make serve     → start static HTTP server for dashboard
 #   make clean     → remove build artifacts
-#   make gen       → (re)generate stock data via Python generator
+#
+# Windows (MinGW-w64):
+#   Install MSYS2 → pacman -S mingw-w64-x86_64-gcc
+#   Run from the MSYS2 MinGW64 shell.
 # ─────────────────────────────────────────────────────────────
 
-CC      = cc
-# -O2            : optimise for speed
-# -Wall -Wextra  : strict warnings
-# -std=c11       : use C11 standard
-# -D_POSIX_C_SOURCE=200809L : expose strtok_r, clock_gettime etc.
-CFLAGS  = -O2 -Wall -Wextra -std=c11
+# ── OS detection ──────────────────────────────────────────────
+ifeq ($(OS),Windows_NT)
+    CC      = gcc
+    CFLAGS  = -O2 -Wall -Wextra -std=c11
+    LDFLAGS = -lpthread -lm
+    BIN     = financial_agg.exe
+    RM      = del /Q
+else
+    CC      = cc
+    CFLAGS  = -O2 -Wall -Wextra -std=c11 -D_POSIX_C_SOURCE=200809L
+    LDFLAGS = -lpthread -lm
+    BIN     = financial_agg
+    RM      = rm -f
+endif
 
-# Link: pthreads + libm (for fabs)
-LDFLAGS = -lpthread -lm
+# ── Sources ───────────────────────────────────────────────────
+SRCS  = benchmark.c \
+        src/ht.c \
+        src/aggregator_core.c \
+        src/parallel_engine.c
 
-SRCS    = benchmark.c \
-          src/aggregator_core.c \
-          src/parallel_engine.c
+OBJS  = $(SRCS:.c=.o)
+DATA  = data/stocks.csv
+W    ?= 8
 
-OBJS    = $(SRCS:.c=.o)
-BIN     = financial_agg
-
-# ── Default target ────────────────────────────────────────────
+# ── Default ───────────────────────────────────────────────────
 all: $(BIN)
 
 $(BIN): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-	@echo "Build complete → ./$(BIN)"
+	@echo "Build complete -> ./$(BIN)"
 
-# Pattern rule: compile each .c to .o
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ── Run ───────────────────────────────────────────────────────
 run: $(BIN)
-	./$(BIN) data/stocks.csv
+	./$(BIN) $(W) $(DATA)
 
-# ── Regenerate data ───────────────────────────────────────────
+# ── Generate dataset ──────────────────────────────────────────
 gen:
 	python3 src/data_generator.py
 
+# ── Scaling benchmark ─────────────────────────────────────────
+bench: $(BIN)
+	python3 scaling_analysis.py $(DATA)
+
+# ── Static HTTP server for dashboard ──────────────────────────
+serve:
+	@echo "Dashboard -> http://localhost:8080"
+	python3 -m http.server 8080 --directory dashboard
+
 # ── Clean ─────────────────────────────────────────────────────
 clean:
-	rm -f $(OBJS) $(BIN)
+	$(RM) $(OBJS) $(BIN)
 
-.PHONY: all run gen clean
+.PHONY: all run gen bench serve clean
