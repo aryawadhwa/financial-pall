@@ -108,24 +108,44 @@ void sequential_aggregate(const char *file_path, StockSummary *out) {
     ht_init(&ht);
 
     while (fgets(line, sizeof(line), f)) {
-        char *sp  = NULL;
-        char *tok;
+        char *p = line;
 
-        tok = strtok_r(line, ",", &sp);    if (!tok) continue; /* timestamp */
-        tok = strtok_r(NULL, ",", &sp);    if (!tok) continue; /* ticker    */
+        /* Optimization: Replace strtok_r with manual pointer advancement.
+           strtok_r introduces measurable setup and state management overhead
+           when parsing millions of rows in a tight loop. Advancing pointers
+           manually yields a significant speedup while retaining correctness. */
+
+        /* timestamp */
+        while (*p && *p != ',') p++;
+        if (*p) p++; else continue;
+
+        /* ticker */
+        char *ticker_start = p;
+        while (*p && *p != ',') p++;
+        char *ticker_end = p;
+        if (*p) p++; else continue;
 
         char ticker[TICKER_LEN];
-        strncpy(ticker, tok, TICKER_LEN - 1);
-        ticker[TICKER_LEN - 1] = '\0';
+        int tlen = ticker_end - ticker_start;
+        if (tlen >= TICKER_LEN) tlen = TICKER_LEN - 1;
+        memcpy(ticker, ticker_start, (size_t)tlen);
+        ticker[tlen] = '\0';
 
-        tok = strtok_r(NULL, ",", &sp);    if (!tok) continue; /* price     */
-        tok = strtok_r(NULL, ",", &sp);    if (!tok) continue; /* type      */
-        int is_buy = (tok[0] == 'B');
+        /* price */
+        while (*p && *p != ',') p++;
+        if (*p) p++; else continue;
 
-        tok = strtok_r(NULL, ",", &sp);    if (!tok) continue; /* volume    */
-        tok = strtok_r(NULL, ",\r\n", &sp); if (!tok) continue; /* total_val */
+        /* type */
+        int is_buy = (*p == 'B');
+        while (*p && *p != ',') p++;
+        if (*p) p++; else continue;
 
-        double val = atof(tok);
+        /* volume */
+        while (*p && *p != ',') p++;
+        if (*p) p++; else continue;
+
+        /* total_val */
+        double val = atof(p);
 
         ht_update(&ht, ticker, val, is_buy);
 
