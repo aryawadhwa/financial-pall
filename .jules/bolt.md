@@ -1,0 +1,3 @@
+## 2024-11-23 - [Optimizing CSV Parser in C]
+**Learning:** When optimizing CSV parsers in C tight loops, the standard library `strtok_r` introduces measurable internal setup and state management overhead. Replacing it with manual pointer advancement loops (`while (*p && *p != ',') p++;`) is faster for structured strings.
+**Action:** When working on C parsers (e.g. for CSV or JSON), prefer manual pointer arithmetic over standard parsing functions like `strtok_r` in the hot path.
