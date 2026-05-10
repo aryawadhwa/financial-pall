@@ -141,25 +141,43 @@ static void *worker_map(void *arg) {
         char *line = cursor;
         cursor     = newline + 1;
 
-        char *sp  = NULL;
-        char *tok;
+        char *p = line;
 
-        /* CSV: timestamp(0) ticker(1) price(2) type(3) volume(4) total_value(5) */
-        tok = strtok_r(line, ",", &sp);     if (!tok) continue; /* timestamp   */
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* ticker      */
+        /* 0. timestamp */
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++;
+
+        /* 1. ticker */
+        char *ticker_start = p;
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
 
         char ticker[TICKER_LEN];
-        strncpy(ticker, tok, TICKER_LEN - 1);
-        ticker[TICKER_LEN - 1] = '\0';
+        size_t tlen = p - ticker_start;
+        if (tlen >= TICKER_LEN) tlen = TICKER_LEN - 1;
+        memcpy(ticker, ticker_start, tlen);
+        ticker[tlen] = '\0';
+        p++;
 
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* price       */
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* type        */
-        int is_buy = (tok[0] == 'B');
+        /* 2. price */
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++;
 
-        tok = strtok_r(NULL, ",", &sp);     if (!tok) continue; /* volume      */
-        tok = strtok_r(NULL, ",\r\n", &sp); if (!tok) continue; /* total_value */
+        /* 3. type */
+        int is_buy = (*p == 'B');
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++;
 
-        double val = atof(tok);
+        /* 4. volume */
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++;
+
+        /* 5. total_value */
+        double val = atof(p);
 
         /* O(1) average hash table update */
         ht_update(&ht, ticker, val, is_buy);
