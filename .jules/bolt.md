@@ -1,0 +1,3 @@
+## 2024-05-10 - Manual Pointer Iteration vs strtok_r
+**Learning:** When optimizing CSV parsers in C tight loops, prefer writing manual pointer advance loops (e.g., `while (*p && *p != ',') p++;`) instead of the standard library `strtok_r`. `strtok_r` introduces measurable internal setup and state management overhead. Furthermore, in parallel engines utilizing memory-mapped files, `strtok_r` mutating the buffer (by placing `\0` over delimiters) forces a costly copy-on-write, which manual read-only pointer iteration completely avoids.
+**Action:** Use manual pointer iteration over `strtok_r` in tight performance-critical C parsing loops where buffer mutation is undesirable or unnecessary.
