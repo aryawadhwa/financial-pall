@@ -21,10 +21,11 @@ import sys
 import os
 import re
 
-DATA_FILE   = sys.argv[1] if len(sys.argv) > 1 else "data/stocks.csv"
-BINARY      = "./financial_agg"
+DATA_FILE = sys.argv[1] if len(sys.argv) > 1 else "data/stocks.csv"
+BINARY = "./financial_agg"
 WORKER_COUNTS = [1, 2, 4, 8, 16]
 OUTPUT_JSON = "dashboard/scaling_results.json"
+
 
 def run_benchmark(workers: int, data_file: str) -> dict:
     """Run the C binary and parse timing from stdout."""
@@ -35,16 +36,16 @@ def run_benchmark(workers: int, data_file: str) -> dict:
     out = result.stdout
 
     seq_match = re.search(r"Sequential Time\s*:\s*([\d.]+)", out)
-    par_match  = re.search(r"Parallel Time\s*:\s*([\d.]+)", out)
-    spd_match  = re.search(r"Speedup Factor\s*:\s*([\d.]+)", out)
-    acc_match  = re.search(r"Accuracy Check\s*:\s*(PASS|FAIL)", out)
+    par_match = re.search(r"Parallel Time\s*:\s*([\d.]+)", out)
+    spd_match = re.search(r"Speedup Factor\s*:\s*([\d.]+)", out)
+    acc_match = re.search(r"Accuracy Check\s*:\s*(PASS|FAIL)", out)
 
     return {
-        "workers":        workers,
-        "seq_time":       float(seq_match.group(1)) if seq_match else None,
-        "par_time":       float(par_match.group(1))  if par_match  else None,
-        "speedup":        float(spd_match.group(1))  if spd_match  else None,
-        "accuracy":       acc_match.group(1) if acc_match else "UNKNOWN",
+        "workers": workers,
+        "seq_time": float(seq_match.group(1)) if seq_match else None,
+        "par_time": float(par_match.group(1)) if par_match else None,
+        "speedup": float(spd_match.group(1)) if spd_match else None,
+        "accuracy": acc_match.group(1) if acc_match else "UNKNOWN",
     }
 
 
@@ -113,19 +114,19 @@ def main():
 
     p = estimate_amdahl_p(results)
     theoretical = amdahl_theoretical(p, WORKER_COUNTS)
-    crossover   = find_crossover(results)
+    crossover = find_crossover(results)
 
     output = {
-        "data_file":          DATA_FILE,
-        "amdahl_p":           round(p, 4),
-        "parallel_fraction":  round(p * 100, 2),
-        "crossover_workers":  crossover,
-        "measured":  [
+        "data_file": DATA_FILE,
+        "amdahl_p": round(p, 4),
+        "parallel_fraction": round(p * 100, 2),
+        "crossover_workers": crossover,
+        "measured": [
             {
                 "workers": r["workers"],
                 "seq_time": r["seq_time"],
                 "par_time": r["par_time"],
-                "speedup":  r["speedup"],
+                "speedup": r["speedup"],
                 "accuracy": r["accuracy"],
             }
             for r in results
@@ -137,7 +138,7 @@ def main():
     with open(OUTPUT_JSON, "w") as f:
         json.dump(output, f, indent=2)
 
-    print(f"\nAmdahl serial fraction p = {p*100:.1f}%")
+    print(f"\nAmdahl serial fraction p = {p * 100:.1f}%")
     print(f"Results written → {OUTPUT_JSON}")
 
 
