@@ -1,46 +1,65 @@
 {
-    "crossover_records": 100000,
-    "average_parallel_fraction": 0.0584925843856388,
-    "scaling_data": [
-        {
-            "records": 100000,
-            "sequential_time": 0.012719,
-            "parallel_time": 0.012033,
-            "speedup": 1.05701,
-            "cpu_count": 8,
-            "parallel_fraction": 0.06164017910359006
-        },
-        {
-            "records": 500000,
-            "sequential_time": 0.058966,
-            "parallel_time": 0.058325,
-            "speedup": 1.01099,
-            "cpu_count": 8,
-            "parallel_fraction": 0.012423466107478909
-        },
-        {
-            "records": 1000000,
-            "sequential_time": 0.118253,
-            "parallel_time": 0.115034,
-            "speedup": 1.027983,
-            "cpu_count": 8,
-            "parallel_fraction": 0.03111001974601863
-        },
-        {
-            "records": 5000000,
-            "sequential_time": 0.616534,
-            "parallel_time": 0.558676,
-            "speedup": 1.103563,
-            "cpu_count": 8,
-            "parallel_fraction": 0.10725052786810936
-        },
-        {
-            "records": 10000000,
-            "sequential_time": 1.213553,
-            "parallel_time": 1.128563,
-            "speedup": 1.075308,
-            "cpu_count": 8,
-            "parallel_fraction": 0.08003872910299707
-        }
-    ]
+  "data_file": "data/stocks.csv",
+  "amdahl_p": 0.818,
+  "parallel_fraction": 81.8,
+  "crossover_workers": 1,
+  "measured": [
+    {
+      "workers": 1,
+      "seq_time": 1.3589,
+      "par_time": 1.3421,
+      "speedup": 1.01,
+      "accuracy": "PASS"
+    },
+    {
+      "workers": 2,
+      "seq_time": 1.363,
+      "par_time": 0.825,
+      "speedup": 1.65,
+      "accuracy": "PASS"
+    },
+    {
+      "workers": 4,
+      "seq_time": 1.3415,
+      "par_time": 0.5737,
+      "speedup": 2.34,
+      "accuracy": "PASS"
+    },
+    {
+      "workers": 8,
+      "seq_time": 1.5024,
+      "par_time": 0.337,
+      "speedup": 4.46,
+      "accuracy": "PASS"
+    },
+    {
+      "workers": 16,
+      "seq_time": 1.6579,
+      "par_time": 0.3869,
+      "speedup": 4.29,
+      "accuracy": "PASS"
+    }
+  ],
+  "theoretical_amdahl": [
+    {
+      "workers": 1,
+      "speedup": 1.0
+    },
+    {
+      "workers": 2,
+      "speedup": 1.6921
+    },
+    {
+      "workers": 4,
+      "speedup": 2.5875
+    },
+    {
+      "workers": 8,
+      "speedup": 3.5183
+    },
+    {
+      "workers": 16,
+      "speedup": 4.29
+    }
+  ]
 }
