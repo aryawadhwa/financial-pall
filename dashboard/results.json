@@ -1,24 +1,23 @@
 {
-    "metrics": {
-        "sequential_time": 1.213553,
-        "parallel_time": 1.128563,
-        "speedup": 1.075308,
-        "accuracy_check": true,
-        "cpu_count": 4
-    },
-    "summary": {
-        "total_buy": 79369309121.919830,
-        "total_sell": 79310700648.199249,
-        "net_flow": 58608473.720581,
-        "ticker_breakdown": {
-            "AAPL": 15273248195.290123,
-            "MSFT": 29200730997.249981,
-            "GOOGL": 16111393997.279951,
-            "AMZN": 13985833104.290789,
-            "NVDA": 10948869846.700428,
-            "TSLA": 24107792923.490295,
-            "META": 42309374759.770988,
-            "NFLX": 6742765946.050308
-        }
-    }
+  "metrics": {
+    "sequential_time": 1.166853,
+    "parallel_time": 0.316576,
+    "speedup": 3.685854,
+    "num_workers": 8,
+    "accuracy_check": true
+  },
+  "summary": {
+    "total_buy": 35811105203.91,
+    "total_sell": 35784714667.51,
+    "net_flow": 26390536.40,
+    "ticker_breakdown": [
+      { "ticker": "AAPL", "buy": 3851372154.40, "sell": 3858197407.24, "net_flow": -6825252.84 },
+      { "ticker": "AMZN", "buy": 3532289032.24, "sell": 3543827554.66, "net_flow": -11538522.42 },
+      { "ticker": "META", "buy": 10598768845.39, "sell": 10556626344.46, "net_flow": 42142500.93 },
+      { "ticker": "MSFT", "buy": 7296460220.62, "sell": 7279328291.71, "net_flow": 17131928.91 },
+      { "ticker": "NFLX", "buy": 1673358439.66, "sell": 1672836886.16, "net_flow": 521553.50 },
+      { "ticker": "NVDA", "buy": 2786439041.99, "sell": 2779020041.83, "net_flow": 7419000.16 },
+      { "ticker": "TSLA", "buy": 6072417469.61, "sell": 6094878141.45, "net_flow": -22460671.84 }
+    ]
+  }
 }

@@ -108,24 +108,39 @@ void sequential_aggregate(const char *file_path, StockSummary *out) {
     ht_init(&ht);
 
     while (fgets(line, sizeof(line), f)) {
-        char *sp  = NULL;
-        char *tok;
+        char *p = line;
 
-        tok = strtok_r(line, ",", &sp);    if (!tok) continue; /* timestamp */
-        tok = strtok_r(NULL, ",", &sp);    if (!tok) continue; /* ticker    */
+        /* CSV: timestamp(0) ticker(1) price(2) type(3) volume(4) total_value(5) */
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++; /* skip timestamp */
+
+        char *ticker_start = p;
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
 
         char ticker[TICKER_LEN];
-        strncpy(ticker, tok, TICKER_LEN - 1);
-        ticker[TICKER_LEN - 1] = '\0';
+        int t_len = p - ticker_start;
+        if (t_len >= TICKER_LEN) t_len = TICKER_LEN - 1;
+        memcpy(ticker, ticker_start, t_len);
+        ticker[t_len] = '\0';
+        p++;
 
-        tok = strtok_r(NULL, ",", &sp);    if (!tok) continue; /* price     */
-        tok = strtok_r(NULL, ",", &sp);    if (!tok) continue; /* type      */
-        int is_buy = (tok[0] == 'B');
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++; /* skip price */
 
-        tok = strtok_r(NULL, ",", &sp);    if (!tok) continue; /* volume    */
-        tok = strtok_r(NULL, ",\r\n", &sp); if (!tok) continue; /* total_val */
+        int is_buy = (*p == 'B');
 
-        double val = atof(tok);
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++; /* skip type */
+
+        while (*p && *p != ',') p++;
+        if (!*p) continue;
+        p++; /* skip volume */
+
+        double val = atof(p); /* atof ignores trailing \r\n */
 
         ht_update(&ht, ticker, val, is_buy);
 
