@@ -1,0 +1,12 @@
+# Build artifacts
+*.o
+*.out
+pall-fin
+benchmark_runner
+
+# Large data files (regenerate with data_generator.py)
+data/*.csv
+
+# Python artifacts
+__pycache__/
+*.pyc
