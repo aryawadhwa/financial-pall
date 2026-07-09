@@ -25,7 +25,7 @@ ifeq ($(OS),Windows_NT)
     RM      = del /Q
 else
     CC      = cc
-    CFLAGS  = -O2 -Wall -Wextra -std=c11 -D_POSIX_C_SOURCE=200809L
+    CFLAGS  = -O2 -Wall -Wextra -std=c11 -D_POSIX_C_SOURCE=200809L -D_DARWIN_C_SOURCE
     LDFLAGS = -lpthread -lm
     BIN     = financial_agg
     RM      = rm -f
